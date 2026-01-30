@@ -1,14 +1,21 @@
 import discord
 from discord import app_commands
 import os
-TOKEN = os.getenv("TOKEN")
+import psycopg2
 
 
-db = sqlite3.connect("galaxylife.db")
-cursor = db.cursor()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL no encontrada")
+
+conn = psycopg2.connect(DATABASE_URL)
+cursor = conn.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS colonias (
+    id SERIAL PRIMARY KEY,
     alianza TEXT,
     jugador TEXT,
     coordenada TEXT UNIQUE,
@@ -16,7 +23,8 @@ CREATE TABLE IF NOT EXISTS colonias (
     color TEXT
 )
 """)
-db.commit()
+conn.commit()
+
 
 class GalaxyBot(discord.Client):
     def __init__(self):
@@ -67,4 +75,5 @@ async def agregar(interaction: discord.Interaction, alianza: str, jugador: str, 
         )
 
 bot.run(TOKEN)
+
 
