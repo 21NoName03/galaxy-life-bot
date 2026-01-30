@@ -1,8 +1,8 @@
 import discord
 from discord import app_commands
-import sqlite3
+import os
+TOKEN = os.getenv("TOKEN")
 
-TOKEN = "MTQ2Njg5ODgxMTMwODczNjY2Mg.GcANUt._dgV_KGdSy-0T1R8w_Tua2ckcAY_0ZnKBwYvNI"
 
 db = sqlite3.connect("galaxylife.db")
 cursor = db.cursor()
@@ -67,3 +67,4 @@ async def agregar(interaction: discord.Interaction, alianza: str, jugador: str, 
         )
 
 bot.run(TOKEN)
+
