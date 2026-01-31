@@ -7,11 +7,11 @@ import psycopg2
 # =====================
 # VARIABLES DE ENTORNO
 # =====================
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not TOKEN:
-    raise RuntimeError("DISCORD_TOKEN no encontrado")
+    raise RuntimeError("TOKEN no encontrado")
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL no encontrada")
@@ -286,3 +286,4 @@ async def eliminar(interaction: discord.Interaction, coordenada: str):
 # ARRANQUE
 # =====================
 bot.run(TOKEN)
+
