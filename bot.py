@@ -2,22 +2,21 @@ import discord
 from discord import app_commands
 import os
 import psycopg2
-from psycopg2 import errors
 
 # =====================
 # VARIABLES DE ENTORNO
 # =====================
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not TOKEN:
-    raise RuntimeError("TOKEN no encontrado")
+    raise RuntimeError("DISCORD_TOKEN no encontrado")
 
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL no encontrada")
+    raise RuntimeError("DATABASE_URL no encontrado")
 
 # =====================
-# BASE DE DATOS
+# CONEXIÓN A POSTGRES
 # =====================
 conn = psycopg2.connect(DATABASE_URL)
 cursor = conn.cursor()
@@ -55,7 +54,7 @@ async def on_ready():
     print(f"🟢 Bot conectado como {bot.user}")
 
 # =====================
-# /agregar
+# COMANDO AGREGAR
 # =====================
 @bot.tree.command(name="agregar", description="Agregar colonia Galaxy Life")
 async def agregar(
@@ -77,18 +76,12 @@ async def agregar(
 
     try:
         cursor.execute(
-            """
-            INSERT INTO colonias (alianza, jugador, coordenada, colonia, color)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
+            "INSERT INTO colonias (alianza, jugador, coordenada, colonia, color) VALUES (%s, %s, %s, %s, %s)",
             (alianza, jugador, coordenada, colonia, color)
         )
         conn.commit()
 
-        embed = discord.Embed(
-            title="✅ Colonia agregada",
-            color=0x00ff00
-        )
+        embed = discord.Embed(title="✅ Colonia agregada", color=0x00ff00)
         embed.add_field(name="Alianza", value=alianza)
         embed.add_field(name="Jugador", value=jugador)
         embed.add_field(name="Coordenada", value=coordenada)
@@ -97,7 +90,7 @@ async def agregar(
 
         await interaction.response.send_message(embed=embed)
 
-    except errors.UniqueViolation:
+    except psycopg2.errors.UniqueViolation:
         conn.rollback()
         await interaction.response.send_message(
             "⚠️ Esa coordenada ya está registrada",
@@ -105,62 +98,43 @@ async def agregar(
         )
 
 # =====================
-# /alianzas
+# LISTAR ALIANZAS
 # =====================
-@bot.tree.command(name="alianzas", description="Mostrar todas las alianzas registradas")
-async def alianzas(interaction: discord.Interaction):
+@bot.tree.command(name="listar_alianzas", description="Ver todas las alianzas registradas")
+async def listar_alianzas(interaction: discord.Interaction):
     cursor.execute("SELECT DISTINCT alianza FROM colonias ORDER BY alianza")
-    rows = cursor.fetchall()
+    filas = cursor.fetchall()
 
-    if not rows:
-        await interaction.response.send_message("⚠️ No hay alianzas registradas")
+    if not filas:
+        await interaction.response.send_message("❌ No hay alianzas registradas")
         return
 
-    texto = "\n".join(f"- {row[0]}" for row in rows)
-
-    embed = discord.Embed(
-        title="🛡️ Alianzas registradas",
-        description=texto,
-        color=0x3498db
-    )
-
-    await interaction.response.send_message(embed=embed)
+    alianzas = "\n".join(f"• {a[0]}" for a in filas)
+    await interaction.response.send_message(f"📜 **Alianzas registradas:**\n{alianzas}")
 
 # =====================
-# /alianza
+# VER ALIANZA
 # =====================
-@bot.tree.command(name="alianza", description="Ver información de una alianza")
-@app_commands.describe(nombre="Nombre de la alianza")
-async def alianza(interaction: discord.Interaction, nombre: str):
+@bot.tree.command(name="ver_alianza", description="Ver jugadores y colonias de una alianza")
+async def ver_alianza(interaction: discord.Interaction, alianza: str):
     cursor.execute(
         "SELECT jugador, colonia, coordenada, color FROM colonias WHERE alianza = %s",
-        (nombre,)
+        (alianza,)
     )
-    rows = cursor.fetchall()
+    filas = cursor.fetchall()
 
-    if not rows:
-        await interaction.response.send_message(
-            "❌ No se encontró esa alianza",
-            ephemeral=True
-        )
+    if not filas:
+        await interaction.response.send_message("❌ No se encontraron datos para esa alianza")
         return
 
-    embed = discord.Embed(
-        title=f"🛡️ Alianza: {nombre}",
-        color=0x9b59b6
-    )
+    mensaje = f"🏰 **Alianza {alianza}**\n\n"
+    for jugador, colonia, coord, color in filas:
+        mensaje += f"👤 {jugador} | 🏠 {colonia} | 📍 {coord} | 🎨 {color}\n"
 
-    for jugador, colonia, coord, color in rows:
-        embed.add_field(
-            name=f"👤 {jugador}",
-            value=f"🏠 {colonia}\n📍 {coord}\n🎨 {color}",
-            inline=False
-        )
-
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(mensaje)
 
 # =====================
-# /editar_coord
+# EDITAR COORDENADA
 # =====================
 @bot.tree.command(name="editar_coord", description="Editar coordenada de una colonia")
 async def editar_coord(
@@ -169,42 +143,64 @@ async def editar_coord(
     nueva: str
 ):
     cursor.execute(
-        "UPDATE colonias SET coordenada = %s WHERE coordenada = %s",
-        (nueva, antigua)
+        "SELECT jugador, colonia, color FROM colonias WHERE coordenada = %s",
+        (antigua,)
     )
+    row = cursor.fetchone()
 
-    if cursor.rowcount == 0:
+    if not row:
         await interaction.response.send_message(
-            "❌ No se encontró esa coordenada",
+            "❌ No se encontró ninguna colonia con esa coordenada",
             ephemeral=True
         )
         return
 
+    jugador, colonia, color = row
+
+    cursor.execute(
+        "UPDATE colonias SET coordenada = %s WHERE coordenada = %s",
+        (nueva, antigua)
+    )
     conn.commit()
+
     await interaction.response.send_message(
-        f"✅ Coordenada actualizada: `{antigua}` → `{nueva}`"
+        f"✏️ **Estás a punto de editar las coordenadas del jugador `{jugador}`**\n"
+        f"🏠 Colonia: {colonia}\n"
+        f"🎨 Color: {color}\n\n"
+        f"✅ Coordenadas actualizadas: `{antigua}` → `{nueva}`"
     )
 
 # =====================
-# /eliminar
+# ELIMINAR COLONIA
 # =====================
 @bot.tree.command(name="eliminar", description="Eliminar una colonia por coordenada")
 async def eliminar(interaction: discord.Interaction, coordenada: str):
     cursor.execute(
-        "DELETE FROM colonias WHERE coordenada = %s",
+        "SELECT jugador, colonia, color FROM colonias WHERE coordenada = %s",
         (coordenada,)
     )
+    row = cursor.fetchone()
 
-    if cursor.rowcount == 0:
+    if not row:
         await interaction.response.send_message(
-            "❌ No se encontró esa coordenada",
+            "❌ No se encontró ninguna colonia con esa coordenada",
             ephemeral=True
         )
         return
 
+    jugador, colonia, color = row
+
+    cursor.execute(
+        "DELETE FROM colonias WHERE coordenada = %s",
+        (coordenada,)
+    )
     conn.commit()
+
     await interaction.response.send_message(
-        f"🗑️ Colonia en `{coordenada}` eliminada"
+        f"⚠️ **Estás a punto de eliminar la colonia y las coordenadas del jugador `{jugador}`**\n"
+        f"🏠 Colonia: {colonia}\n"
+        f"🎨 Color: {color}\n\n"
+        f"🗑️ Colonia eliminada correctamente"
     )
 
 # =====================
